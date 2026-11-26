@@ -75,11 +75,11 @@ internal static class SelfTests
             if (keyboard.HookReinstallCount != 1) return 31;
         }
 
-        // Download URL validation accepts only HTTPS on the official host.
+        // Download URL validation accepts only HTTPS under the official GitHub repository.
         if (UpdateService.ResolveSafeDownloadUrl("https://evil.example/a.exe") != UpdateService.WebsiteUrl) return 32;
-        if (UpdateService.ResolveSafeDownloadUrl("http://langfix-th-en-download.panuphongoat.chatgpt.site/") != UpdateService.WebsiteUrl) return 33;
-        if (UpdateService.ResolveSafeDownloadUrl("https://langfix-th-en-download.panuphongoat.chatgpt.site/download/latest")
-            != "https://langfix-th-en-download.panuphongoat.chatgpt.site/download/latest") return 34;
+        if (UpdateService.ResolveSafeDownloadUrl("https://github.com/otheruser/LangFix/releases/latest") != UpdateService.WebsiteUrl) return 33;
+        if (UpdateService.ResolveSafeDownloadUrl("https://github.com/PanuphongBunkum/LangFix/releases/tag/v0.6.0")
+            != "https://github.com/PanuphongBunkum/LangFix/releases/tag/v0.6.0") return 34;
 
         // Tightened English suffix check rejects random gibberish with valid 3-letter prefix.
         if (WordDictionaryService.IsEnglishKnown("thexyz")) return 35;

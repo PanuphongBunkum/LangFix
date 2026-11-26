@@ -15,6 +15,16 @@
 
 พจนานุกรมในตัวดัดแปลงจากพจนานุกรมโอเพนซอร์สของ LibreOffice โปรดดู `ThirdPartyNotices.txt`
 
-การตรวจสอบอัปเดตเชื่อมต่อเว็บไซต์ LangFix เพื่ออ่านหมายเลขเวอร์ชัน ส่วนฟอร์มความคิดเห็นจะส่งเฉพาะข้อมูลที่ผู้ใช้กรอกและกดยืนยันเอง
+การตรวจสอบอัปเดตเชื่อมต่อ [GitHub Releases](https://github.com/PanuphongBunkum/LangFix/releases/latest) เพื่ออ่านไฟล์ `langfix-version.json` ส่วนการแจ้งปัญหาและเสนอฟังก์ชันเปิดผ่าน [GitHub Issues](https://github.com/PanuphongBunkum/LangFix/issues)
 
 ข้อจำกัด: แอปทั่วไปที่รันด้วยสิทธิ์ผู้ใช้ปกติไม่สามารถดักคีย์จากหน้าต่างที่รันเป็น Administrator ได้ และช่องรหัสผ่านบางชนิดอาจไม่เปิดเผยสถานะให้โปรแกรมภายนอกทราบ
+
+## ดาวน์โหลด
+
+ดาวน์โหลดตัวติดตั้งล่าสุดได้ที่ [GitHub Releases](https://github.com/PanuphongBunkum/LangFix/releases/latest)
+
+## ออกเวอร์ชันใหม่ (สำหรับผู้พัฒนา)
+
+```powershell
+.\release.ps1 -Version 0.6.1 -Notes "สรุปสิ่งเปลี่ยนแปลง"
+```

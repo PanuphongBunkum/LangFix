@@ -4,12 +4,20 @@ namespace LangFix;
 
 internal static class UpdateService
 {
-    public const string WebsiteUrl = "https://langfix-th-en-download.panuphongoat.chatgpt.site";
-    public const string FeedbackUrl = WebsiteUrl + "/#feedback";
-    private const string ManifestUrl = WebsiteUrl + "/langfix-version.json";
-    private static readonly HttpClient Client = new() { Timeout = TimeSpan.FromSeconds(12) };
+    public const string RepoPath = "/PanuphongBunkum/LangFix/";
+    public const string WebsiteUrl = "https://github.com/PanuphongBunkum/LangFix/releases/latest";
+    public const string FeedbackUrl = "https://github.com/PanuphongBunkum/LangFix/issues/new/choose";
+    private const string ManifestUrl = "https://github.com/PanuphongBunkum/LangFix/releases/latest/download/langfix-version.json";
+    private static readonly HttpClient Client = CreateClient();
 
     internal sealed record UpdateManifest(string Version, string? DownloadUrl, string? ReleaseNotes);
+
+    private static HttpClient CreateClient()
+    {
+        var client = new HttpClient { Timeout = TimeSpan.FromSeconds(12) };
+        client.DefaultRequestHeaders.UserAgent.ParseAdd($"LangFix/{CurrentVersion}");
+        return client;
+    }
 
     public static async Task<UpdateManifest> GetLatestAsync()
     {
@@ -31,7 +39,8 @@ internal static class UpdateService
     {
         if (Uri.TryCreate(candidate, UriKind.Absolute, out var uri)
             && uri.Scheme == Uri.UriSchemeHttps
-            && uri.Host.Equals(new Uri(WebsiteUrl).Host, StringComparison.OrdinalIgnoreCase))
+            && uri.Host.Equals("github.com", StringComparison.OrdinalIgnoreCase)
+            && uri.AbsolutePath.StartsWith(RepoPath, StringComparison.OrdinalIgnoreCase))
         {
             return uri.AbsoluteUri;
         }
