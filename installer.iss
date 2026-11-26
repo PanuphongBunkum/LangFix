@@ -43,15 +43,23 @@ Name: "desktopicon"; Description: "สร้างไอคอนบน Desktop"
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "เปิด LangFix"; Flags: nowait postinstall skipifsilent
 
+[Registry]
+; LangFix writes this "start with Windows" value itself (StartupManager). Never create it here,
+; but remove it on uninstall so Windows does not try to launch a missing file at sign-in.
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueName: "LangFix"; ValueType: none; Flags: uninsdeletevalue dontcreatekey
+
+[UninstallRun]
+Filename: "{app}\{#MyAppExeName}"; Parameters: "--shutdown"; Flags: runhidden waituntilterminated; RunOnceId: "StopLangFix"
+
 [Code]
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
   ResultCode: Integer;
 begin
   Result := '';
-  if FileExists(ExpandConstant('{app}\\{#MyAppExeName}')) then
+  if FileExists(ExpandConstant('{app}\{#MyAppExeName}')) then
   begin
-    Exec(ExpandConstant('{app}\\{#MyAppExeName}'), '--shutdown', '', SW_HIDE,
+    Exec(ExpandConstant('{app}\{#MyAppExeName}'), '--shutdown', '', SW_HIDE,
       ewWaitUntilTerminated, ResultCode);
     Sleep(500);
   end;

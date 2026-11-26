@@ -61,6 +61,19 @@ internal static class SelfTests
         if (ShortcutDefinition.Default.Matches(NativeMethods.VkBack, true, false, true)) return 26;
         if (!UpdateService.IsNewerVersion("0.3.0", "0.4.0")) return 27;
         if (UpdateService.IsNewerVersion("0.4.0", "0.4.0")) return 28;
+
+        // Caps Lock comes from tracked state now (no cross-thread attach per key).
+        var capsState = NativeMethods.GetActiveKeyboardState(capsLockOn: true);
+        if ((capsState[NativeMethods.VkCapital] & 0x01) == 0) return 29;
+        if (NativeMethods.GetKeyboardLayout(0) != 0 &&
+            NativeMethods.TranslateKey(0x41, NativeMethods.MapVirtualKey(0x41, 0), capsState, NativeMethods.KeyboardLanguage.English) != "A") return 30;
+
+        // Hook can be replaced without leaving the old one installed.
+        using (var keyboard = new KeyboardService())
+        {
+            keyboard.ReinstallHook();
+            if (keyboard.HookReinstallCount != 1) return 31;
+        }
         if (WordDictionaryService.RightLangDictionariesLoaded)
         {
             if (!WordDictionaryService.IsEnglishKnown("correct")) return 11;

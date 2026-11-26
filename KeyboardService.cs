@@ -14,11 +14,26 @@ internal sealed class KeyboardService : IDisposable
     private readonly object gate = new();
     private readonly List<char> englishToken = [];
     private readonly List<char> thaiToken = [];
+    private readonly System.Windows.Forms.Timer hookHealthTimer;
     private NativeMethods.KeyboardLanguage sourceLanguage = NativeMethods.KeyboardLanguage.Unknown;
     private UndoCorrection? pendingUndo;
     private nint hook;
     private nint lastFocusedWindow;
+    private bool capsLockOn;
+    private uint lastHookTick;
+    private long lastHookReinstall;
+    private NativeMethods.KeyboardLanguage expectedLanguage = NativeMethods.KeyboardLanguage.Unknown;
+    private long expectedLanguageUntil;
     private bool disposed;
+
+    // Windows silently removes a low-level hook that is too slow too often. If the session keeps
+    // receiving input while our callback has not run for this long, the hook is reinstalled.
+    private const uint HookSilenceThresholdMs = 2000;
+    private const int HookHealthIntervalMs = 3000;
+    private const int MinReinstallIntervalMs = 10_000;
+    // After asking a window to switch layout, trust the requested language for this long so the
+    // first keys of the next word are not attributed to the old layout while the switch is applied.
+    private const int ExpectedLanguageWindowMs = 600;
 
     public bool Enabled { get; set; } = true;
     public bool AutomaticMode { get; set; }
@@ -26,16 +41,23 @@ internal sealed class KeyboardService : IDisposable
     public ShortcutDefinition Shortcut { get; set; } = ShortcutDefinition.Default;
     public event Action<string, string>? CorrectionMade;
     public event Action<Exception>? CorrectionFailed;
+    internal int HookReinstallCount { get; private set; }
 
     public KeyboardService()
     {
         uiContext = SynchronizationContext.Current ?? new WindowsFormsSynchronizationContext();
         callback = HookCallback;
         hook = NativeMethods.InstallHook(callback);
+        lastHookTick = unchecked((uint)Environment.TickCount);
+        capsLockOn = NativeMethods.ReadCapsLockState();
+        hookHealthTimer = new System.Windows.Forms.Timer { Interval = HookHealthIntervalMs };
+        hookHealthTimer.Tick += (_, _) => CheckHookHealth();
+        hookHealthTimer.Start();
     }
 
     private nint HookCallback(int code, nint wParam, nint lParam)
     {
+        lastHookTick = unchecked((uint)Environment.TickCount);
         try
         {
             return HookCallbackCore(code, wParam, lParam);
@@ -44,6 +66,37 @@ internal sealed class KeyboardService : IDisposable
         {
             ErrorLog.Write(ex);
             return NativeMethods.CallNextHookEx(hook, code, wParam, lParam);
+        }
+    }
+
+    private void CheckHookHealth()
+    {
+        if (disposed) return;
+        var lastInput = NativeMethods.GetLastInputTick();
+        var silence = unchecked(lastInput - lastHookTick);
+        // Wrap-around safe: a "negative" difference means our callback ran after the last input.
+        if (silence <= HookSilenceThresholdMs || silence >= 0x8000_0000) return;
+        if (Environment.TickCount64 - lastHookReinstall < MinReinstallIntervalMs) return;
+        ReinstallHook();
+    }
+
+    internal void ReinstallHook()
+    {
+        try
+        {
+            // Install the new hook before removing the old one so there is no gap. Both calls run on
+            // this thread, so the callback cannot be invoked between them (no double processing).
+            var newHook = NativeMethods.InstallHook(callback);
+            var oldHook = hook;
+            hook = newHook;
+            if (oldHook != 0) NativeMethods.UnhookWindowsHookEx(oldHook);
+            lastHookReinstall = Environment.TickCount64;
+            lastHookTick = unchecked((uint)Environment.TickCount);
+            HookReinstallCount++;
+        }
+        catch (Exception ex)
+        {
+            ErrorLog.Write(ex);
         }
     }
 
@@ -66,8 +119,16 @@ internal sealed class KeyboardService : IDisposable
             {
                 ClearBuffers();
                 pendingUndo = null;
+                expectedLanguage = NativeMethods.KeyboardLanguage.Unknown;
             }
             lastFocusedWindow = focusedWindow;
+            capsLockOn = NativeMethods.ReadCapsLockState();
+        }
+
+        if (data.vkCode == NativeMethods.VkCapital)
+        {
+            capsLockOn = !capsLockOn;
+            return NativeMethods.CallNextHookEx(hook, code, wParam, lParam);
         }
 
         var controlDown = (NativeMethods.GetAsyncKeyState(NativeMethods.VkControl) & 0x8000) != 0;
@@ -141,18 +202,20 @@ internal sealed class KeyboardService : IDisposable
             }
             if (pair is { } correction)
             {
-                uiContext.Post(_ => Correct(correction.Original, correction.Converted, ' '), null);
+                // Correct synchronously inside the hook: the space key is suppressed and the
+                // replacement is injected before any later physical key is processed.
+                Correct(correction.Original, correction.Converted, ' ');
                 return 1;
             }
             return NativeMethods.CallNextHookEx(hook, code, wParam, lParam);
         }
 
-        var state = NativeMethods.GetActiveKeyboardState();
+        var state = NativeMethods.GetActiveKeyboardState(capsLockOn);
         var english = NativeMethods.TranslateKey(data.vkCode, data.scanCode, state, NativeMethods.KeyboardLanguage.English);
         var thai = NativeMethods.TranslateKey(data.vkCode, data.scanCode, state, NativeMethods.KeyboardLanguage.Thai);
         if (english.Length == 1 && thai.Length == 1 && !char.IsControl(english[0]) && !char.IsControl(thai[0]))
         {
-            var activeLanguage = NativeMethods.GetActiveKeyboardLanguage();
+            var activeLanguage = ResolveActiveLanguage();
             CorrectionPair? immediateCorrection = null;
             lock (gate)
             {
@@ -182,7 +245,8 @@ internal sealed class KeyboardService : IDisposable
             {
                 // The current physical key has not reached the target control yet. Suppress it,
                 // erase only the preceding characters, then insert the complete corrected word.
-                uiContext.Post(_ => Correct(correction.Original, correction.Converted, null, correction.Original.Length - 1), null);
+                // This runs synchronously so a fast next key cannot land before the backspaces.
+                Correct(correction.Original, correction.Converted, null, correction.Original.Length - 1);
                 return 1;
             }
         }
@@ -241,21 +305,42 @@ internal sealed class KeyboardService : IDisposable
         sourceLanguage = NativeMethods.KeyboardLanguage.Unknown;
     }
 
+    private NativeMethods.KeyboardLanguage ResolveActiveLanguage()
+    {
+        var actual = NativeMethods.GetActiveKeyboardLanguage();
+        if (expectedLanguage == NativeMethods.KeyboardLanguage.Unknown) return actual;
+        if (actual == expectedLanguage || Environment.TickCount64 > expectedLanguageUntil)
+        {
+            expectedLanguage = NativeMethods.KeyboardLanguage.Unknown;
+            return actual;
+        }
+        return expectedLanguage;
+    }
+
     private void Correct(string original, string converted, char? delimiter, int? backspaceCount = null, bool allowUndo = true)
     {
         try
         {
             var targetWindow = NativeMethods.GetFocusedInputWindow();
             NativeMethods.SendBackspacesAndText(backspaceCount ?? original.Length, converted, delimiter);
-            if (SwitchLayoutAfterCorrection) NativeMethods.SwitchLayoutForText(targetWindow, converted);
+            if (SwitchLayoutAfterCorrection)
+            {
+                var requested = NativeMethods.SwitchLayoutForText(targetWindow, converted);
+                if (requested != NativeMethods.KeyboardLanguage.Unknown)
+                {
+                    expectedLanguage = requested;
+                    expectedLanguageUntil = Environment.TickCount64 + ExpectedLanguageWindowMs;
+                }
+            }
             lock (gate)
                 pendingUndo = allowUndo ? new UndoCorrection(original, converted, delimiter, targetWindow) : null;
-            CorrectionMade?.Invoke(original, converted);
+            // Notifications touch UI (balloon tips); keep them out of the hook callback.
+            uiContext.Post(_ => CorrectionMade?.Invoke(original, converted), null);
         }
         catch (Exception ex)
         {
             ErrorLog.Write(ex);
-            CorrectionFailed?.Invoke(ex);
+            uiContext.Post(_ => CorrectionFailed?.Invoke(ex), null);
         }
     }
 
@@ -283,6 +368,8 @@ internal sealed class KeyboardService : IDisposable
     {
         if (disposed) return;
         disposed = true;
+        hookHealthTimer.Stop();
+        hookHealthTimer.Dispose();
         if (hook != 0) NativeMethods.UnhookWindowsHookEx(hook);
         hook = 0;
     }

@@ -17,6 +17,8 @@ internal static class NativeMethods
     internal const int VkControl = 0x11;
     internal const int VkMenu = 0x12;
     internal const int VkSpace = 0x20;
+    internal const int VkCapital = 0x14;
+    internal const uint ToUnicodeNoStateChange = 0x4;
     internal const int VkLShift = 0xA0;
     internal const int VkRShift = 0xA1;
     internal const int VkLControl = 0xA2;
@@ -50,6 +52,8 @@ internal static class NativeMethods
     [StructLayout(LayoutKind.Sequential)]
     internal struct MouseInput { public int dx, dy; public uint mouseData, dwFlags, time; public nint dwExtraInfo; }
     [StructLayout(LayoutKind.Sequential)]
+    internal struct LastInputInfo { public uint cbSize, dwTime; }
+    [StructLayout(LayoutKind.Sequential)]
     internal struct Rect { public int left, top, right, bottom; }
     [StructLayout(LayoutKind.Sequential)]
     internal struct GuiThreadInfo
@@ -64,6 +68,8 @@ internal static class NativeMethods
     [DllImport("user32.dll")] internal static extern nint CallNextHookEx(nint hook, int code, nint wParam, nint lParam);
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] internal static extern nint GetModuleHandle(string? name);
     [DllImport("user32.dll")] internal static extern short GetAsyncKeyState(int key);
+    [DllImport("user32.dll")] internal static extern short GetKeyState(int key);
+    [DllImport("user32.dll")] internal static extern bool GetLastInputInfo(ref LastInputInfo info);
     [DllImport("user32.dll")] internal static extern nint GetForegroundWindow();
     [DllImport("user32.dll")] internal static extern bool SetForegroundWindow(nint window);
     [DllImport("user32.dll")] internal static extern uint GetWindowThreadProcessId(nint window, out uint processId);
@@ -99,7 +105,9 @@ internal static class NativeMethods
         if (scan == 0) scan = MapVirtualKey(vk, 0);
         var layoutVirtualKey = MapVirtualKeyEx(scan, 3, layout);
         if (layoutVirtualKey == 0) layoutVirtualKey = vk;
-        var count = ToUnicodeEx(layoutVirtualKey, scan, state, buffer, buffer.Capacity, 0, layout);
+        // Flag 0x4: do not change kernel keyboard state (dead keys), so translating in the
+        // hook never alters what the target application receives (Windows 10 1607+).
+        var count = ToUnicodeEx(layoutVirtualKey, scan, state, buffer, buffer.Capacity, ToUnicodeNoStateChange, layout);
         return count > 0 ? buffer.ToString(0, count) : string.Empty;
     }
 
@@ -130,22 +138,16 @@ internal static class NativeMethods
         return LoadKeyboardLayout(language == KeyboardLanguage.Thai ? "0000041E" : "00000409", 0);
     }
 
-    internal static byte[] GetActiveKeyboardState()
+    /// <summary>
+    /// Builds the key state used for translation without touching other threads.
+    /// This runs inside the low-level hook on every key press, so it must stay cheap:
+    /// AttachThreadInput/SetFocus here can stall input system-wide and get the hook
+    /// silently removed by Windows (LowLevelHooksTimeout).
+    /// </summary>
+    internal static byte[] GetActiveKeyboardState(bool capsLockOn)
     {
         var state = new byte[256];
-        var focused = GetFocusedInputWindow();
-        var focusedThread = focused != 0 ? GetWindowThreadProcessId(focused, out _) : 0;
-        var currentThread = GetCurrentThreadId();
-        var attached = focusedThread != 0 && focusedThread != currentThread && AttachThreadInput(focusedThread, currentThread, true);
-        try
-        {
-            if (focused != 0) SetFocus(focused);
-            GetKeyboardState(state);
-        }
-        finally
-        {
-            if (attached) AttachThreadInput(focusedThread, currentThread, false);
-        }
+        if (capsLockOn) state[VkCapital] = 0x01;
         SetPressedState(state, VkShift);
         SetPressedState(state, VkLShift);
         SetPressedState(state, VkRShift);
@@ -160,6 +162,33 @@ internal static class NativeMethods
 
     private static void SetPressedState(byte[] state, int virtualKey) =>
         state[virtualKey] = (byte)(((GetAsyncKeyState(virtualKey) & 0x8000) != 0) ? 0x80 : 0x00);
+
+    /// <summary>
+    /// Reads the Caps Lock toggle of the focused window's input queue. Attaching to another
+    /// thread is relatively expensive, so callers only do this at startup and when focus changes.
+    /// </summary>
+    internal static bool ReadCapsLockState()
+    {
+        var focused = GetFocusedInputWindow();
+        var focusedThread = focused != 0 ? GetWindowThreadProcessId(focused, out _) : 0;
+        var currentThread = GetCurrentThreadId();
+        var attached = focusedThread != 0 && focusedThread != currentThread && AttachThreadInput(currentThread, focusedThread, true);
+        try
+        {
+            return (GetKeyState(VkCapital) & 0x0001) != 0;
+        }
+        finally
+        {
+            if (attached) AttachThreadInput(currentThread, focusedThread, false);
+        }
+    }
+
+    /// <summary>Tick count (GetTickCount) of the most recent keyboard or mouse input anywhere in the session.</summary>
+    internal static uint GetLastInputTick()
+    {
+        var info = new LastInputInfo { cbSize = (uint)Marshal.SizeOf<LastInputInfo>() };
+        return GetLastInputInfo(ref info) ? info.dwTime : 0;
+    }
 
     internal static nint GetFocusedInputWindow()
     {
@@ -250,19 +279,21 @@ internal static class NativeMethods
         ? "0000041E" // Thai Kedmanee
         : "00000409"; // English (United States)
 
-    internal static void SwitchLayoutForText(nint targetWindow, string text)
+    /// <summary>
+    /// Asks the target window to switch layout and returns immediately (no waiting, because this
+    /// can run inside the keyboard hook). Returns the language requested, or Unknown when nothing
+    /// was requested. The switch is applied asynchronously by the target thread.
+    /// </summary>
+    internal static KeyboardLanguage SwitchLayoutForText(nint targetWindow, string text)
     {
-        if (targetWindow == 0) return;
+        if (targetWindow == 0) return KeyboardLanguage.Unknown;
         var targetLanguage = TargetLayoutId(text) == "0000041E" ? KeyboardLanguage.Thai : KeyboardLanguage.English;
         var layout = GetInstalledKeyboardLayout(targetLanguage);
-        if (layout == 0) return;
+        if (layout == 0) return KeyboardLanguage.Unknown;
         var targetThread = GetWindowThreadProcessId(targetWindow, out _);
-        if (GetKeyboardLayout(targetThread) == layout) return;
+        if (GetKeyboardLayout(targetThread) == layout) return KeyboardLanguage.Unknown;
         var flags = TargetLayoutId(text) == "00000409" ? 2 : 3;
-        PostMessage(targetWindow, WmInputLangChangeRequest, flags, layout);
-        var deadline = Environment.TickCount64 + 250;
-        while (GetKeyboardLayout(targetThread) != layout && Environment.TickCount64 < deadline)
-            Thread.Sleep(1);
+        return PostMessage(targetWindow, WmInputLangChangeRequest, flags, layout) ? targetLanguage : KeyboardLanguage.Unknown;
     }
 
     private static void AddVirtualKey(List<Input> inputs, int vk)

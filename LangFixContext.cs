@@ -54,7 +54,11 @@ internal sealed class LangFixContext : ApplicationContext
             ContextMenuStrip = menu,
             Visible = true
         };
-        keyboard.CorrectionFailed += _ => tray.ShowBalloonTip(3000, "LangFix แก้ข้อความไม่สำเร็จ", "ดูรายละเอียดได้จากไฟล์ error.log", ToolTipIcon.Error);
+        keyboard.CorrectionFailed += _ =>
+        {
+            tray.Tag = null;
+            tray.ShowBalloonTip(3000, "LangFix แก้ข้อความไม่สำเร็จ", "ดูรายละเอียดได้จากไฟล์ error.log", ToolTipIcon.Error);
+        };
         tray.DoubleClick += (_, _) => ShowSettings();
         tray.BalloonTipClicked += (_, _) => OpenUpdateWebsite();
 
@@ -85,6 +89,7 @@ internal sealed class LangFixContext : ApplicationContext
     private void OnCorrectionMade(string original, string converted)
     {
         if (!settings.ShowNotifications) return;
+        tray.Tag = null; // clicking this balloon must not open a stale update link
         tray.ShowBalloonTip(1200, "LangFix แก้ภาษาแล้ว", $"{original}  →  {converted}", ToolTipIcon.Info);
     }
 
