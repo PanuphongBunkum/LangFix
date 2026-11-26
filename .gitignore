@@ -1,0 +1,7 @@
+bin/
+obj/
+publish/
+distribution/
+.dotnet/
+*.user
+.vs/

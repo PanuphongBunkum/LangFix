@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon Condition="Exists('Assets\\LangFix.ico')">Assets\LangFix.ico</ApplicationIcon>
+    <AssemblyName>LangFix</AssemblyName>
+    <RootNamespace>LangFix</RootNamespace>
+    <Authors>Panuphong Bunkum</Authors>
+    <Company>Panuphong Bunkum</Company>
+    <Version>0.5.0</Version>
+  </PropertyGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="ThirdParty\Dictionaries\*.dic" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,23 @@
+LangFix Third-Party Notices
+===========================
+
+LangFix includes English and Thai spelling dictionary data from the
+LibreOffice dictionaries project:
+https://github.com/LibreOffice/dictionaries
+
+Upstream revision:
+f2ff99058268502bdcf4cad25c1ca2935ad8aa7d
+
+English source: en/en_US.dic
+Thai source: th_TH/th_TH.dic
+
+The dictionary files are parsed at runtime as word lists. LangFix does not
+include LibreOffice application code.
+
+The applicable upstream notices and license texts are installed in the
+Licenses directory alongside LangFix. The Thai dictionary is identified by
+its upstream README as LGPL-licensed. The English dictionary's authorship,
+copyright, and license terms are reproduced in the included English README
+and license files.
+
+LibreOffice and its contributors do not endorse LangFix.
