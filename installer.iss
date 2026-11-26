@@ -1,5 +1,5 @@
 #define MyAppName "LangFix"
-#define MyAppVersion "0.6.1"
+#define MyAppVersion "0.6.2"
 #define MyAppPublisher "Panuphong Bunkum"
 #define MyAppExeName "LangFix.exe"
 

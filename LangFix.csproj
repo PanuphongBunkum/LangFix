@@ -11,7 +11,7 @@
     <RootNamespace>LangFix</RootNamespace>
     <Authors>Panuphong Bunkum</Authors>
     <Company>Panuphong Bunkum</Company>
-    <Version>0.6.1</Version>
+    <Version>0.6.2</Version>
   </PropertyGroup>
   <ItemGroup>
     <EmbeddedResource Include="ThirdParty\Dictionaries\*.dic" />

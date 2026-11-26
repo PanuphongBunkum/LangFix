@@ -117,8 +117,22 @@ internal sealed class LangFixContext : ApplicationContext
             settings.Save();
             if (UpdateService.IsNewerVersion(UpdateService.CurrentVersion, latest.Version))
             {
-                tray.Tag = UpdateService.ResolveSafeDownloadUrl(latest.DownloadUrl);
-                tray.ShowBalloonTip(5000, $"มี LangFix {latest.Version} รุ่นใหม่", latest.ReleaseNotes ?? "คลิกเพื่อเปิดหน้าดาวน์โหลด", ToolTipIcon.Info);
+                var downloadUrl = UpdateService.ResolveSafeDownloadUrl(latest.DownloadUrl);
+                tray.Tag = downloadUrl;
+                if (showWhenCurrent)
+                {
+                    var notes = string.IsNullOrWhiteSpace(latest.ReleaseNotes) ? "" : $"\n\n{latest.ReleaseNotes}";
+                    var answer = MessageBox.Show(
+                        $"มี LangFix {latest.Version} รุ่นใหม่ (รุ่นปัจจุบัน {UpdateService.CurrentVersion}){notes}\n\nต้องการเปิดหน้าดาวน์โหลดตอนนี้หรือไม่?",
+                        "LangFix — มีรุ่นใหม่",
+                        MessageBoxButtons.YesNo,
+                        MessageBoxIcon.Information);
+                    if (answer == DialogResult.Yes) OpenWebsite(downloadUrl);
+                }
+                else
+                {
+                    tray.ShowBalloonTip(5000, $"มี LangFix {latest.Version} รุ่นใหม่", latest.ReleaseNotes ?? "คลิกเพื่อเปิดหน้าดาวน์โหลด", ToolTipIcon.Info);
+                }
             }
             else if (showWhenCurrent)
             {
