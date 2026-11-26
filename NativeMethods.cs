@@ -190,6 +190,22 @@ internal static class NativeMethods
         return GetLastInputInfo(ref info) ? info.dwTime : 0;
     }
 
+    internal static string GetProcessNameForWindow(nint window)
+    {
+        if (window == 0) return string.Empty;
+        _ = GetWindowThreadProcessId(window, out var pid);
+        if (pid == 0) return string.Empty;
+        try
+        {
+            using var proc = Process.GetProcessById((int)pid);
+            return proc.ProcessName;
+        }
+        catch
+        {
+            return string.Empty;
+        }
+    }
+
     internal static nint GetFocusedInputWindow()
     {
         var foreground = GetForegroundWindow();

@@ -19,6 +19,7 @@ internal sealed class KeyboardService : IDisposable
     private UndoCorrection? pendingUndo;
     private nint hook;
     private nint lastFocusedWindow;
+    private bool autoCorrectionSuppressedForWindow;
     private bool capsLockOn;
     private uint lastHookTick;
     private long lastHookReinstall;
@@ -34,6 +35,17 @@ internal sealed class KeyboardService : IDisposable
     // After asking a window to switch layout, trust the requested language for this long so the
     // first keys of the next word are not attributed to the old layout while the switch is applied.
     private const int ExpectedLanguageWindowMs = 600;
+
+    // Skip automatic correction in terminals and password managers so commands and passwords
+    // are never altered unexpectedly; manual shortcut still works everywhere.
+    private static readonly HashSet<string> AutoExcludedProcesses = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "cmd", "powershell", "pwsh", "windowsterminal", "wt", "conhost",
+        "keepass", "keepassxc", "1password", "bitwarden"
+    };
+
+    internal static bool IsAutoExcludedProcess(string processName) =>
+        !string.IsNullOrEmpty(processName) && AutoExcludedProcesses.Contains(processName);
 
     public bool Enabled { get; set; } = true;
     public bool AutomaticMode { get; set; }
@@ -123,6 +135,7 @@ internal sealed class KeyboardService : IDisposable
             }
             lastFocusedWindow = focusedWindow;
             capsLockOn = NativeMethods.ReadCapsLockState();
+            autoCorrectionSuppressedForWindow = IsAutoExcludedProcess(NativeMethods.GetProcessNameForWindow(focusedWindow));
         }
 
         if (data.vkCode == NativeMethods.VkCapital)
@@ -195,7 +208,7 @@ internal sealed class KeyboardService : IDisposable
             {
                 if (AcceptInjectedForTesting)
                     LastTestDecision = $"source={sourceLanguage}; en=[{new string(englishToken.ToArray())}] known={LanguageConverter.IsKnownEnglish(new string(englishToken.ToArray()))}; th=[{new string(thaiToken.ToArray())}] known={LanguageConverter.IsKnownThai(new string(thaiToken.ToArray()))}";
-                pair = AutomaticMode
+                pair = AutomaticMode && !autoCorrectionSuppressedForWindow
                     ? ChooseAutomatic(new string(englishToken.ToArray()), new string(thaiToken.ToArray()), sourceLanguage)
                     : null;
                 ClearBuffers();
@@ -231,7 +244,7 @@ internal sealed class KeyboardService : IDisposable
                 englishToken.Add(english[0]);
                 thaiToken.Add(thai[0]);
 
-                if (AutomaticMode)
+                if (AutomaticMode && !autoCorrectionSuppressedForWindow)
                 {
                     immediateCorrection = ChooseImmediateAutomatic(
                         new string(englishToken.ToArray()),

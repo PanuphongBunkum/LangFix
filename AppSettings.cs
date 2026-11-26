@@ -45,13 +45,18 @@ internal sealed class AppSettings
                 return settings;
             }
         }
-        catch { }
+        catch (Exception ex)
+        {
+            ErrorLog.Write(ex);
+        }
         return new AppSettings();
     }
 
     public void Save()
     {
         Directory.CreateDirectory(Folder);
-        File.WriteAllText(FilePath, JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true }));
+        var tempPath = FilePath + ".tmp";
+        File.WriteAllText(tempPath, JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true }));
+        File.Move(tempPath, FilePath, overwrite: true);
     }
 }

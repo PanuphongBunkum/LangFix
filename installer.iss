@@ -1,5 +1,5 @@
 #define MyAppName "LangFix"
-#define MyAppVersion "0.5.0"
+#define MyAppVersion "0.6.0"
 #define MyAppPublisher "Panuphong Bunkum"
 #define MyAppExeName "LangFix.exe"
 
@@ -10,8 +10,8 @@ AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 DefaultDirName={autopf}\LangFix
 DefaultGroupName=LangFix
-OutputDir=..\..\outputs
-OutputBaseFilename=LangFix-Setup-0.5.0
+OutputDir=..\outputs
+OutputBaseFilename=LangFix-Setup-{#MyAppVersion}
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern

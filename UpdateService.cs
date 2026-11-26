@@ -26,4 +26,15 @@ internal static class UpdateService
         Version.TryParse(current, out var currentVersion)
         && Version.TryParse(latest, out var latestVersion)
         && latestVersion > currentVersion;
+
+    internal static string ResolveSafeDownloadUrl(string? candidate)
+    {
+        if (Uri.TryCreate(candidate, UriKind.Absolute, out var uri)
+            && uri.Scheme == Uri.UriSchemeHttps
+            && uri.Host.Equals(new Uri(WebsiteUrl).Host, StringComparison.OrdinalIgnoreCase))
+        {
+            return uri.AbsoluteUri;
+        }
+        return WebsiteUrl;
+    }
 }

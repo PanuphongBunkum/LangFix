@@ -81,14 +81,21 @@ internal static class WordDictionaryService
         catch { return false; }
     }
 
+    private static readonly string[] EnglishSuffixes = ["ing", "est", "ed", "es", "er", "ly", "s", "d"];
+
     public static bool IsEnglishKnown(string value)
     {
         var word = NormalizeEnglish(value);
         if (word.Length == 0) return false;
         if (English.Contains(word)) return true;
-        for (var length = Math.Min(8, word.Length); length >= 3; length--)
+        foreach (var suffix in EnglishSuffixes)
         {
-            if (English.Contains(word[..length]) && word.Length - length <= 3) return true;
+            if (word.Length > suffix.Length + 2 && word.EndsWith(suffix, StringComparison.Ordinal))
+            {
+                var stem = word[..^suffix.Length];
+                if (English.Contains(stem) || (suffix is "ed" or "ing" or "er" or "est" && English.Contains(stem + "e")))
+                    return true;
+            }
         }
         return false;
     }
@@ -115,17 +122,22 @@ internal static class WordDictionaryService
 
     private static bool CanComposeThai(string word)
     {
-        var reachable = new bool[word.Length + 1];
-        reachable[0] = true;
+        if (word.Length < 4) return false;
+        // Track minimum number of dictionary segments needed to reach each index.
+        // Requiring <= 4 segments avoids matching random gibberish made of 2-char fragments.
+        var minParts = new int[word.Length + 1];
+        Array.Fill(minParts, int.MaxValue);
+        minParts[0] = 0;
         for (var start = 0; start < word.Length; start++)
         {
-            if (!reachable[start]) continue;
+            if (minParts[start] >= 4) continue;
             for (var end = start + 2; end <= word.Length; end++)
             {
-                if (Thai.Contains(word[start..end])) reachable[end] = true;
+                if (Thai.Contains(word[start..end]) && minParts[start] + 1 < minParts[end])
+                    minParts[end] = minParts[start] + 1;
             }
         }
-        return reachable[word.Length];
+        return minParts[word.Length] <= 4;
     }
 
     private static string NormalizeEnglish(string value) => value.Trim().TrimEnd('.', ',', ';', ':', '!', '?').ToLowerInvariant();

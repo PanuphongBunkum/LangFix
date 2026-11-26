@@ -117,7 +117,7 @@ internal sealed class LangFixContext : ApplicationContext
             settings.Save();
             if (UpdateService.IsNewerVersion(UpdateService.CurrentVersion, latest.Version))
             {
-                tray.Tag = string.IsNullOrWhiteSpace(latest.DownloadUrl) ? UpdateService.WebsiteUrl : latest.DownloadUrl;
+                tray.Tag = UpdateService.ResolveSafeDownloadUrl(latest.DownloadUrl);
                 tray.ShowBalloonTip(5000, $"มี LangFix {latest.Version} รุ่นใหม่", latest.ReleaseNotes ?? "คลิกเพื่อเปิดหน้าดาวน์โหลด", ToolTipIcon.Info);
             }
             else if (showWhenCurrent)

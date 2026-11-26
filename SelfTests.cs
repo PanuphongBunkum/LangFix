@@ -74,6 +74,17 @@ internal static class SelfTests
             keyboard.ReinstallHook();
             if (keyboard.HookReinstallCount != 1) return 31;
         }
+
+        // Download URL validation accepts only HTTPS on the official host.
+        if (UpdateService.ResolveSafeDownloadUrl("https://evil.example/a.exe") != UpdateService.WebsiteUrl) return 32;
+        if (UpdateService.ResolveSafeDownloadUrl("http://langfix-th-en-download.panuphongoat.chatgpt.site/") != UpdateService.WebsiteUrl) return 33;
+        if (UpdateService.ResolveSafeDownloadUrl("https://langfix-th-en-download.panuphongoat.chatgpt.site/download/latest")
+            != "https://langfix-th-en-download.panuphongoat.chatgpt.site/download/latest") return 34;
+
+        // Tightened English suffix check rejects random gibberish with valid 3-letter prefix.
+        if (WordDictionaryService.IsEnglishKnown("thexyz")) return 35;
+        if (!WordDictionaryService.IsEnglishKnown("testing")) return 36;
+        if (!KeyboardService.IsAutoExcludedProcess("pwsh") || KeyboardService.IsAutoExcludedProcess("notepad")) return 37;
         if (WordDictionaryService.RightLangDictionariesLoaded)
         {
             if (!WordDictionaryService.IsEnglishKnown("correct")) return 11;
